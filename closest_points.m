@@ -20,9 +20,3 @@ for i = 1:n_points
     cp(:, i) = source(:,index) + source_mean;
 
 end
-
-% calcolo media dei punti dei due set -> avvicino lungo le dimensioni i
-% punti corrispondenti mean(data,2) repmat su tutti gli altri 
-% sistema può funzionare anche con numero diverso tra modello e dati.
-% media dei punti sulle tre coordinate  e poi aggiungo quelle della source
-% nell'output
