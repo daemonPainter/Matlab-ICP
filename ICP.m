@@ -1,28 +1,27 @@
-function [ T , R ] = ICP( S , M )
+function [ T , Y ] = ICP( P , X )
 %ICP Iterative Closest Point algorithm
-%   [T,R] = ICP(S,M) applies the Iterative Closest Point algorithm to the
-%   matrix S (source) trying to re-arrange its components so they match the best
-%   order wrt the order of the points in the M (model) matrix. S,M must be
-%   4-by-n matrices with points in homogeneous coordinates (i.e., 4th row
-%   must be a 1s row).
-%   T is the homogeneous transform that registers R to M. R is a 4-by-n
-%   matrix with the same convention as above that contains points taken
-%   from S that match the best order wrt to M.
+%   [T,Y] = ICP(P,X) applies the Iterative Closest Point algorithm to the
+%   matrix P so that it is registered to the model X. Since points in P may
+%   not have the same order they have in model X, they are re-arranged so
+%   that they match their best closest neighbour. Re-ordered and registered
+%   P set is saved in Y, while T contains the homogeneous transform that
+%   can register P to X reference frame (i.e. X = T*P)
+%   P,X (and Y) must be 4-by-n matrices with points in homogeneous
+%   coordinates (i.e. [x;y;z;1]).
 
-
-if size(S,1)~=4 || size(M,1)~=4
-    fprintf('Input matrices must be 4-by-N');
+if size(P,1)~=4 || size(X,1)~=4
+    fprintf('Input matrices must be 4-by-N\n');
     return
 end
-    for i=1:size(S,2)
-        if S(4,i)~=1
+    for i=1:size(P,2)
+        if P(4,i)~=1
             fprintf('Input matrices must follow this convention:\n');
             fprintf('dimension:4-by-n; rows 1 to 3 are cartesian coordinates, row 4 contains only ones (homogeneous coordinates)\n');
             return
         end
     end
-    for i=1:size(M,2)
-        if M(4,i)~=1
+    for i=1:size(X,2)
+        if X(4,i)~=1
             fprintf('Input matrices must follow this convention:\n');
             fprintf('dimension:4-by-n; rows 1 to 3 are cartesian coordinates, row 4 contains only ones (homogeneous coordinates)\n');
             return
@@ -37,52 +36,41 @@ iter = 0;           % # of the current iteration
 fcost = 1000;       % function cost to be minimized
 delta_fcost = 1000; % delta fcost between two iterations
 
-while( delta_fcost > threshold && iter < I_max )
-    iter = iter + 1;
-    % transform the source points with the guessed T_k transform
-    if iter>1
-        source_t = T_k(:,:,iter-1) * S;
-    else
-        source_t = T_k * S;
-    end
-    % Compute corrispondence between the transformed source points (source)
-    % and the transformed points (model)
-    [source_tc] = closest_points(source_t,M);
-    % Inputs as 4 x n
-    source_tc = [source_tc(1:3,:); ones(1,size(source_tc,2))];
-    % Compute Corrispondent point Registration
-    T_new = quaternion_matching(source_tc,M);
-    % Update the guessed Transform Matrix
-    if iter>1
-        T_new = T_new * T_k(:,:,iter-1);
-    else
-        T_new = T_new * T_k;
-    end
-    % Compute updated source transformed points
-    source_tct = T_new * S;
-    T = T_new;  % OUTPUT
-    % Compute corrispondence and find the total error
-    [model_c] = closest_points(source_tct,M);
-    e = rms(model_c(1:3,:)-source_tct(1:3,:));
+k = 0;
+P_0 = P;
+T = eye(4);
 
-    % The cost function is the sum of the RMS errors
-    fcost(iter) = sum(e);
-    % Save the matrix T_iter
-    T_k(:,:,iter) = T;
+while( delta_fcost > threshold && k < I_max )
+    if k>0  % can we remove this if?
+        Y_k = closest_points(P_k,X);
+    else
+        Y_k = closest_points(P_0,X);
+    end
+    T_k = quaternion_matching(Y_k,X);
+        T = T_k*T;  % update wrt previous step
+    P_k = T*P_0;
     
-    % saves output
-    R = [model_c; ones(1,size(model_c,2))];
-    
-    % Compute the delta between the current and the previous
-    % iteration - if the delta is lower than threshold
-    % the algorithm stops
-    if(iter <= 2)
+    Y = closest_points(P_k,X);  % need to re-arrange points again
+    Y = [Y;ones(1,size(Y,2))];
+    % the cost function is the sum of the RMS errors
+    e = rms(Y(1:3,:)-P_k(1:3,:));
+    fcost(k+1) = sum(e);
+    % compute error riduction between two successive steps
+    if k==0
+        if T == eye(4)
+            fprintf('P and X are the same set\n');
+            return
+        end
         delta_fcost = 1000;
     else
-        delta_fcost = abs(fcost(iter) - fcost(iter-1));
+        delta_fcost = abs(fcost(k+1) - fcost(k));
     end
+    k = k+1;
 end
 
+% Transform
+display(['Stopped at iteration: ' num2str(k)])
+display(['Cost function: ' num2str(fcost(end))])
 
 end
 
